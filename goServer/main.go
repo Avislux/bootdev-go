@@ -3,11 +3,17 @@ package main
 import (
 	"fmt"
 	"log"
+	"slices"
+	"strings"
+	"os"
 	"net/http"
 	"sync/atomic"
 	"encoding/json"
+	"database/sql"
+	godotdev "github.com/joho/godotenv"
 	//"strconv"
 )
+import _ "github.com/lib/pq"
 type apiConfig struct {
 	fileserverHits atomic.Int32
 }
@@ -35,7 +41,14 @@ func (cfg *apiConfig) reset(next http.Handler) http.Handler {
 func main(){
 	const port = "8080"
 	mux := http.NewServeMux()
-	
+	godotdev.Load()
+	dbURL := os.Getenv("DB_URL")
+	_, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	//dbQueries := database.New(db)
 	var apiCfg apiConfig
 	fileServer :=  http.FileServer(http.Dir("."))
 	handler := http.StripPrefix("/app/", fileServer)
@@ -65,6 +78,7 @@ func main(){
 			// the key will be the name of struct field unless you give it an explicit JSON tag
 			Valid bool `json:"valid"`
 			Error string `json:"error"`
+			CleanedBody string `json:"cleaned_body"`
 		}
 		
 		decoder := json.NewDecoder(req.Body)
@@ -88,8 +102,17 @@ func main(){
 			w.Write(dat)
 			return
 		}
+		strsplit := strings.Split(params.Body, " ")
+		for i, word := range strsplit {
+			badwords := []string{"kerfuffle","sharbert","fornax"}
+			if slices.Contains(badwords,strings.ToLower(word)){
+				strsplit[i] = "****"
+			}
+		}
+		cleanedBody := strings.Join(strsplit, " ")
 		response := returnVals{
 			Valid: true,
+			CleanedBody:cleanedBody,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
